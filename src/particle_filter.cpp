@@ -60,6 +60,34 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
    //  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
    //  http://www.cplusplus.com/reference/random/default_random_engine/
 
+   std::normal_distribution<double> x_noise(0, std_pos[0]);
+   std::normal_distribution<double> y_noise(0, std_pos[1]);
+   std::normal_distribution<double> theta_noise(0, std_pos[2]);
+   KVP_DEBUG("prediction", "defined gaussian noise distribution");
+
+   default_random_engine gen;
+
+   // for each particle, predict new particle location according to the vehicle velocity and yaw_rate
+   for(int i = 0; i < num_particles; ++i) {
+      // if yaw_rate is closer to zero, the car is going closer to straight line
+      if( fabs(yaw_rate) < 0.0001 ) {
+          particles[i].x += velocity * delta_t * cos(particles[i].theta);
+          particles[i].y += velocity * delta_t * sin(particles[i].theta);
+      } else {
+          double newTheta = particles[i].theta + yaw_rate * delta_t;
+          particles[i].x += velocity / yaw_rate * (sin(newTheta) - sin(particles[i].theta));
+          particles[i].y += velocity / yaw_rate * (-cos(newTheta) +cos(particles[i].theta));
+          particles[i].theta = newTheta;
+      }
+
+      // for each particle added ramdomly pick noise from gaussian distribution.
+      particles[i].x += x_noise(gen);
+      particles[i].y += y_noise(gen);
+      particles[i].theta += theta_noise(gen);
+
+   }
+   KVP_DEBUG("prediction", "calculated new particle position");
+
 }
 
 void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations) {
