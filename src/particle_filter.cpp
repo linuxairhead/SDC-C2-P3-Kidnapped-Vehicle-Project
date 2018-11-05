@@ -119,7 +119,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
 
 void ParticleFilter::updateWeights(double sensor_range, double std_landmark[], 
 		const std::vector<LandmarkObs> &observations, const Map &map_landmarks) {
-   KVP_DEBUG("prediction", "start");
+   KVP_DEBUG("updateWeights", "start");
    // TODO: Update the weights of each particle using a mult-variate Gaussian distribution. You can read
    //   more about this distribution here: https://en.wikipedia.org/wiki/Multivariate_normal_distribution
    // NOTE: The observations are given in the VEHICLE'S coordinate system. Your particles are located
@@ -130,6 +130,57 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    //   and the following is a good resource for the actual equation to implement (look at equation 
    //   3.33
    //   http://planning.cs.uiuc.edu/node99.html
+   double weight_normalizer = 0.0;
+
+   for(int i = 0; i < num_particles; i++) {
+
+      KVP_DEBUG("updateWeights", "transform from vehicle coordinate to map coordinate");
+      std::vector<LandmarkObs> mapCoordObj;
+      for(int j = 0; j < observations.size(); j++) {
+
+         LandmarkObs obj;
+         obj.x = particles[i].x + observations[j].x*cos(particles[i].theta) - observations[j].y*sin(particles[i].theta);
+         obj.y = particles[i].y + observations[j].x*sin(particles[i].theta) + observations[j].y*cos(particles[i].theta);
+         obj.id = observations[j].id;
+         mapCoordObj.push_back(obj);
+      }
+
+      KVP_DEBUG("updateWeights", "create near landmarks list within sensor range by map coordinate");
+      std::vector<LandmarkObs> nearLandmarks;
+
+      for(auto & landmark:map_landmarks.landmark_list) {
+        double nearDist = dist(particles[i].x, particles[i].y, landmark.x_f, landmark.y_f);
+        if( nearDist <= sensor_range) {
+           nearLandmarks.push_back(LandmarkObs {landmark.id_i, landmark.x_f, landmark.x_f});
+        }
+      }
+
+      KVP_DEBUG("updateWeights", "identify near landmark id");
+      dataAssociation(nearLandmarks, mapCoordObj, sensor_range);
+
+      KVP_DEBUG("updateWeights", "create closed-by landmarks list with map coordinate");
+      double weight = 1;
+      int kNum = -1;
+      for(int j = 0; j < nearLandmarks.size(); j++) {
+         double minDist = 1000000;
+
+         for(int k = 0; k < mapCoordObj.size() ; k++) {
+            double landDist = dist(nearLandmarks[j].x, nearLandmarks[j].y, mapCoordObj[k].x, mapCoordObj[k].y);
+            if( landDist < minDist) {
+               minDist = landDist;
+               kNum = k;
+            }
+         }
+      }
+
+      weight_normalizer += particles[i].weight;
+   }
+
+   KVP_DEBUG("updateWeights", "normalize the weights of all the particles");
+   for(int i = 0; i < particles.size(); i++) {
+      particles[i].weight /= weight_normalizer;
+      weights[i] = particles[i].weight;
+   }
 }
 
 void ParticleFilter::resample() {
