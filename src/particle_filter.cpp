@@ -77,17 +77,16 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
           double newTheta = particles[i].theta + yaw_rate * delta_t;
           particles[i].x += velocity / yaw_rate * (sin(newTheta) - sin(particles[i].theta));
           particles[i].y += velocity / yaw_rate * (-cos(newTheta) +cos(particles[i].theta));
-          particles[i].theta = newTheta;
+          particles[i].theta += yaw_rate * delta_t;
       }
 
       // for each particle added ramdomly pick noise from gaussian distribution.
       particles[i].x += x_noise(gen);
       particles[i].y += y_noise(gen);
       particles[i].theta += theta_noise(gen);
-
    }
-   KVP_DEBUG("prediction", "calculated new particle position");
 
+   KVP_DEBUG("prediction", "calculated new particle position");
 }
 
 void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::vector<LandmarkObs>& observations,
@@ -98,22 +97,18 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
    // NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
    //   implement this method and use it as a helper during the updateWeights phase.
    KVP_DEBUG("dataAssociation", "init, set max sensor range");
-   double closest = sensor_range * 10;
+   double closest = sensor_range * 100;
    int closest_id = 0;
 
    for(int i = 0; i < observations.size(); i++) {
-
       for(int j = 0; j < predicted.size(); j++) {
-
          double obj_dist = dist(observations[i].x, observations[i].y,
                            predicted[j].x, predicted[j].y);
-
          if(closest > obj_dist) {
             closest = obj_dist;
-            closest_id = predicted[j].id;
+            observations[i].id = predicted[j].id;
          }
        }
-       observations[i].id = closest_id;
     }
 }
 
@@ -137,8 +132,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
       KVP_DEBUG("updateWeights", "transform from vehicle coordinate to map coordinate");
       std::vector<LandmarkObs> mapCoordObj;
-      for(int j = 0; j < observations.size(); j++) {
 
+      for(int j = 0; j < observations.size(); j++) {
          LandmarkObs obj;
          obj.x = particles[i].x + observations[j].x*cos(particles[i].theta) - observations[j].y*sin(particles[i].theta);
          obj.y = particles[i].y + observations[j].x*sin(particles[i].theta) + observations[j].y*cos(particles[i].theta);
@@ -151,35 +146,23 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
       for(auto & landmark:map_landmarks.landmark_list) {
         double nearDist = dist(particles[i].x, particles[i].y, landmark.x_f, landmark.y_f);
-        if( nearDist <= sensor_range) {
+        if( nearDist < sensor_range) {
            nearLandmarks.push_back(LandmarkObs {landmark.id_i, landmark.x_f, landmark.x_f});
         }
       }
 
-      KVP_DEBUG("updateWeights", "identify near landmark id");
+      KVP_DEBUG("updateWeights", "identify landmark id");
       dataAssociation(nearLandmarks, mapCoordObj, sensor_range);
 
+
       KVP_DEBUG("updateWeights", "create closed-by landmarks list with map coordinate");
-      double weight = 1;
-      int kNum = -1;
-      for(int j = 0; j < nearLandmarks.size(); j++) {
-         double minDist = 1000000;
-
-         for(int k = 0; k < mapCoordObj.size() ; k++) {
-            double landDist = dist(nearLandmarks[j].x, nearLandmarks[j].y, mapCoordObj[k].x, mapCoordObj[k].y);
-            if( landDist < minDist) {
-               minDist = landDist;
-               kNum = k;
-            }
-         }
+      for(int j = 0; j < mapCoordObj.size() ; j++) {
+         Map::single_landmark_s new_lm = map_landmarks.landmark_list[mapCoordObj[j].id];
+         double xt = pow(mapCoordObj[j].x - new_lm.x_f,2) / (2*pow(std_landmark[0],2));
+         double yt = pow(mapCoordObj[j].y - new_lm.y_f,2) / (2*pow(std_landmark[1],2));
+         double w = exp(-(xt + yt))/(2*M_PI*std_landmark[0]*std_landmark[1]);
+         particles[i].weight *= w;
       }
-
-      weight_normalizer += particles[i].weight;
-   }
-
-   KVP_DEBUG("updateWeights", "normalize the weights of all the particles");
-   for(int i = 0; i < particles.size(); i++) {
-      particles[i].weight /= weight_normalizer;
       weights[i] = particles[i].weight;
    }
 }

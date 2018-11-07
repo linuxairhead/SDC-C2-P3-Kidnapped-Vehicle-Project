@@ -11,8 +11,10 @@
 
 #include "helper_functions.h"
 
+#define DEBUG 1
+
 #ifdef  DEBUG
-#define KVP_DEBUG(fn, log) std::count << "ParticleFilter : " << fn << " : " << log << "\n";
+#define KVP_DEBUG(fn, log) std::cout << "ParticleFilter : " << fn << " : " << log << "\n";
 #else
 #define KVP_DEBUG(fn, log)
 #endif
