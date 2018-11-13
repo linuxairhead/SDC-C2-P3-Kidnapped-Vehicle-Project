@@ -50,6 +50,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
       particles[i].y = dist_y(gen);
       particles[i].theta = dist_theta(gen);
       particles[i].weight = 1.0;
+      weights[i] = 1.0;
    }
 
    KVP_DEBUG("init", "initialized all the particle with random gen");
@@ -102,7 +103,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
    // NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
    //   implement this method and use it as a helper during the updateWeights phase.
    KVP_DEBUG("dataAssociation", "init, set max sensor range");
-   double closest = sensor_range * 100;
+   double closest = sensor_range * sqrt(2);
    int closest_id = 0;
 
    for(int i = 0; i < observations.size(); i++) {
@@ -116,6 +117,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
          }
        }
        observations[i].id = closest_id;
+       KVP_DEBUG("dataAssociation", " " + to_string(closest_id));
     }
 }
 
@@ -138,22 +140,20 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
 
       KVP_DEBUG("updateWeights", "transform from vehicle coordinate to map coordinate");
       std::vector<LandmarkObs> mapCoordObj;
-
       for(int j = 0; j < observations.size(); j++) {
          LandmarkObs obj;
          obj.x = particles[i].x + observations[j].x*cos(particles[i].theta) - observations[j].y*sin(particles[i].theta);
          obj.y = particles[i].y + observations[j].x*sin(particles[i].theta) + observations[j].y*cos(particles[i].theta);
-         obj.id = observations[j].id;
+         obj.id = j;
          mapCoordObj.push_back(obj);
       }
 
       KVP_DEBUG("updateWeights", "create near landmarks list within sensor range by map coordinate");
       std::vector<LandmarkObs> nearLandmarks;
-
       for(int j = 0 ; j < map_landmarks.landmark_list.size(); j++) {
         Map::single_landmark_s landmark = map_landmarks.landmark_list[i];
         double nearDist = dist(particles[i].x, particles[i].y, landmark.x_f, landmark.y_f);
-        if( nearDist < sensor_range) {
+        if( nearDist <= sensor_range) {
            nearLandmarks.push_back(LandmarkObs {landmark.id_i, landmark.x_f, landmark.x_f});
         }
       }
@@ -186,21 +186,32 @@ void ParticleFilter::resample() {
    // TODO: Resample particles with replacement with probability proportional to their weight. 
    // NOTE: You may find std::discrete_distribution helpful here.
    //   http://en.cppreference.com/w/cpp/numeric/random/discrete_distribution
-   default_random_engine gen;
-   discrete_distribution<> dist_particles(weights.begin(), weights.end());
-
    vector<Particle> resampleP;
-   resampleP.resize(num_particles);
 
-   for(int i=0; i<num_particles; i++) {
-      int p_id = dist_particles(gen);
-      resampleP[i] = particles[p_id];
+   default_random_engine gen;
+   uniform_int_distribution<int> random_p(0, num_particles - 1);
+   int index = random_p(gen);
+
+   // get the largest weight
+   double maxW = 2.0 * *max_element(weights.begin(), weights.end());
+   double sumW = 0.0;
+
+   KVP_DEBUG("resample", "maxW selected ");
+   for(int i=0; i<particles.size(); i++) {
+      uniform_real_distribution<double> random_w(0.0, maxW);
+      sumW += random_w(gen);
+
+      while( sumW > weights[index] ) {
+         sumW -= weights[index];
+         index = (index + 1) % num_particles;
+         KVP_DEBUG("resample", to_string(index) );
+      }
+      resampleP.push_back(particles[index]);
    }
-
    particles = resampleP;
-
-   weights.clear();
+   KVP_DEBUG("resample", "resampled");
 }
+
 
 Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<int>& associations, 
                                      const std::vector<double>& sense_x, const std::vector<double>& sense_y)
@@ -217,6 +228,8 @@ Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<i
     particle.associations= associations;
     particle.sense_x = sense_x;
     particle.sense_y = sense_y;
+
+    return particle;
 }
 
 string ParticleFilter::getAssociations(Particle best)
