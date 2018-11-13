@@ -27,6 +27,9 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
    // Add random Gaussian noise to each particle.
    // NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
+   if(is_initialized)
+     return;
+
    // resize the particle vector and weights vector
    num_particles = 100;
    particles.resize(num_particles);
@@ -46,7 +49,7 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
       particles[i].x = dist_x(gen);
       particles[i].y = dist_y(gen);
       particles[i].theta = dist_theta(gen);
-      particles[i].weight = 1/num_particles;
+      particles[i].weight = 1.0;
    }
 
    KVP_DEBUG("init", "initialized all the particle with random gen");
@@ -107,10 +110,11 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
                            predicted[j].x, predicted[j].y);
          if(closest > obj_dist) {
             closest = obj_dist;
-            observations[i].id = predicted[j].id;
+            closest_id = predicted[j].id;
             KVP_DEBUG("dataAssociation", "closest " + observations[i].id );
          }
        }
+       observations[i].id = closest_id;
     }
 }
 
@@ -121,7 +125,7 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    //   more about this distribution here: https://en.wikipedia.org/wiki/Multivariate_normal_distribution
    // NOTE: The observations are given in the VEHICLE'S coordinate system. Your particles are located
    //   according to the MAP'S coordinate system. You will need to transform between the two systems.
-   //   Keep in mind that this transformation requires both rotation AND translation (but no scaling).
+   //   Keep in mind that this itransformation requires both rotation AND translation (but no scaling).
    //   The following is a good resource for the theory:
    //   https://www.willamette.edu/~gorr/classes/GeneralGraphics/Transforms/transforms2d.htm
    //   and the following is a good resource for the actual equation to implement (look at equation 
@@ -197,6 +201,9 @@ Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<i
     // associations: The landmark id that goes along with each listed association
     // sense_x: the associations x mapping already converted to world coordinates
     // sense_y: the associations y mapping already converted to world coordinates
+    particle.associations.clear();
+    particle.sense_x.clear();
+    particle.sense_y.clear();
 
     particle.associations= associations;
     particle.sense_x = sense_x;
