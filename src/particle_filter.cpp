@@ -149,7 +149,8 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       KVP_DEBUG("updateWeights", "create near landmarks list within sensor range by map coordinate");
       std::vector<LandmarkObs> nearLandmarks;
 
-      for(auto & landmark:map_landmarks.landmark_list) {
+      for(int j = 0 ; j < map_landmarks.landmark_list.size(); j++) {
+        Map::single_landmark_s landmark = map_landmarks.landmark_list[i];
         double nearDist = dist(particles[i].x, particles[i].y, landmark.x_f, landmark.y_f);
         if( nearDist < sensor_range) {
            nearLandmarks.push_back(LandmarkObs {landmark.id_i, landmark.x_f, landmark.x_f});
@@ -159,15 +160,22 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       KVP_DEBUG("updateWeights", "identify landmark id");
       dataAssociation(nearLandmarks, mapCoordObj, sensor_range);
 
-
-      KVP_DEBUG("updateWeights", "create closed-by landmarks list with map coordinate");
+      KVP_DEBUG("updateWeights", "Calculate the weight of each particle using Multivariate Gaussian distribution");
       for(int j = 0; j < mapCoordObj.size() ; j++) {
-         Map::single_landmark_s new_lm = map_landmarks.landmark_list[mapCoordObj[j].id];
-         double xt = pow(mapCoordObj[j].x - new_lm.x_f,2) / (2*pow(std_landmark[0],2));
-         double yt = pow(mapCoordObj[j].y - new_lm.y_f,2) / (2*pow(std_landmark[1],2));
-         double w = exp(-(xt + yt))/(2*M_PI*std_landmark[0]*std_landmark[1]);
-         particles[i].weight *= w;
+         for(int k = 0; k < nearLandmarks.size() ; k++) {
+            if(mapCoordObj[j].id == nearLandmarks[k].id) {
+               double xt = pow((mapCoordObj[j].x - nearLandmarks[k].x),2) / (2 * pow(std_landmark[0],2));
+               double yt = pow((mapCoordObj[j].y - nearLandmarks[k].y),2) / (2 * pow(std_landmark[1],2));
+               double w = exp(-1 * (xt + yt))/(2*M_PI*std_landmark[0]*std_landmark[1]);
+               particles[i].weight *= w;
+            }
+         }
       }
+      weight_normalizer += particles[i].weight;
+   }
+   KVP_DEBUG("updateWeights", "Normalize the weights of all particles since resampling using probabilistic approach");
+   for(int i = 0; i < particles.size(); i++ ) {
+      particles[i].weight /= weight_normalizer;
       weights[i] = particles[i].weight;
    }
 }
