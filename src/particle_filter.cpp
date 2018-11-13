@@ -66,6 +66,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
    KVP_DEBUG("prediction", "defined gaussian noise distribution");
 
    default_random_engine gen;
+   gen.seed(321);
 
    // for each particle, predict new particle location according to the vehicle velocity and yaw_rate
    for(int i = 0; i < num_particles; ++i) {
@@ -76,7 +77,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
       } else {
           double newTheta = particles[i].theta + yaw_rate * delta_t;
           particles[i].x += velocity / yaw_rate * (sin(newTheta) - sin(particles[i].theta));
-          particles[i].y += velocity / yaw_rate * (-cos(newTheta) +cos(particles[i].theta));
+          particles[i].y += velocity / yaw_rate * (cos(particles[i].theta) - cos(newTheta));
           particles[i].theta += yaw_rate * delta_t;
       }
 
@@ -107,6 +108,7 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
          if(closest > obj_dist) {
             closest = obj_dist;
             observations[i].id = predicted[j].id;
+            KVP_DEBUG("dataAssociation", "closest " + observations[i].id );
          }
        }
     }
@@ -126,7 +128,6 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    //   3.33
    //   http://planning.cs.uiuc.edu/node99.html
    double weight_normalizer = 0.0;
-   weights.clear();
 
    for(int i = 0; i < num_particles; i++) {
 
@@ -182,6 +183,10 @@ void ParticleFilter::resample() {
       int p_id = dist_particles(gen);
       resampleP[i] = particles[p_id];
    }
+
+   particles = resampleP;
+
+   weights.clear();
 }
 
 Particle ParticleFilter::SetAssociations(Particle& particle, const std::vector<int>& associations, 
