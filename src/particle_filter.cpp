@@ -64,7 +64,6 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
    //  http://en.cppreference.com/w/cpp/numeric/random/normal_distribution
    //  http://www.cplusplus.com/reference/random/default_random_engine/
    default_random_engine gen;
-   gen.seed(321);
 
    double pred_x, pred_y, pred_theta, tempTheta;
 
@@ -74,6 +73,7 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
       if( fabs(yaw_rate) < 0.0001 ) {
           pred_x = particles[i].x + velocity * delta_t * cos(particles[i].theta);
           pred_y = particles[i].y + velocity * delta_t * sin(particles[i].theta);
+          pred_theta = particles[i].theta;
       } else {
           tempTheta = particles[i].theta + yaw_rate * delta_t;
           pred_x = particles[i].x + velocity / yaw_rate * (sin(tempTheta) - sin(particles[i].theta));
@@ -81,9 +81,9 @@ void ParticleFilter::prediction(double delta_t, double std_pos[], double velocit
           pred_theta = particles[i].theta + yaw_rate * delta_t;
       }
 
-      std::normal_distribution<double> x_noise(pred_x, std_pos[0]);
-      std::normal_distribution<double> y_noise(pred_y, std_pos[1]);
-      std::normal_distribution<double> theta_noise(pred_theta, std_pos[2]);
+      normal_distribution<double> x_noise(pred_x, std_pos[0]);
+      normal_distribution<double> y_noise(pred_y, std_pos[1]);
+      normal_distribution<double> theta_noise(pred_theta, std_pos[2]);
       KVP_DEBUG("prediction", "defined gaussian noise distribution");
 
       // for each particle added ramdomly pick noise from gaussian distribution.
