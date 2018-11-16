@@ -27,13 +27,10 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
    // Add random Gaussian noise to each particle.
    // NOTE: Consult particle_filter.h for more information about this method (and others in this file).
 
-   if(is_initialized)
-     return;
-
    // resize the particle vector and weights vector
-   num_particles = 100;
-   particles.resize(num_particles);
-   weights.resize(num_particles);
+   num_particles = 20;
+   default_random_engine gen;
+
    KVP_DEBUG("init", "resize the particle vector and weights vector");
 
    // a normal (Gaussian) distribution for x, y, and theta with std (standard deviations)
@@ -43,14 +40,17 @@ void ParticleFilter::init(double x, double y, double theta, double std[]) {
    KVP_DEBUG("init", "normal distribution for x, y, and theta");
 
    // initialized all the particle with random generate value
-   default_random_engine gen;
+
    for (int i = 0; i < num_particles; ++i) {
-      particles[i].id = i;
-      particles[i].x = dist_x(gen);
-      particles[i].y = dist_y(gen);
-      particles[i].theta = dist_theta(gen);
-      particles[i].weight = 1.0;
-      weights[i] = 1.0;
+      Particle particle;
+      particle.id = i;
+      particle.x = dist_x(gen);
+      particle.y = dist_y(gen);
+      particle.theta = dist_theta(gen);
+      particle.weight = 1.0;
+
+      particles.push_back(particle);
+      weights.push_back(particle.weight);
    }
 
    KVP_DEBUG("init", "initialized all the particle with random gen");
@@ -103,15 +103,16 @@ void ParticleFilter::dataAssociation(std::vector<LandmarkObs> predicted, std::ve
    // NOTE: this method will NOT be called by the grading code. But you will probably find it useful to 
    //   implement this method and use it as a helper during the updateWeights phase.
    KVP_DEBUG("dataAssociation", "init, set max sensor range");
-   double closest = sensor_range * sqrt(2);
-   int closest_id = 0;
 
    for(int i = 0; i < observations.size(); i++) {
+      double closest_obj = sensor_range * sqrt(2);
+      int closest_id = -1;
+
       for(int j = 0; j < predicted.size(); j++) {
          double obj_dist = dist(observations[i].x, observations[i].y,
                            predicted[j].x, predicted[j].y);
-         if(closest > obj_dist) {
-            closest = obj_dist;
+         if(closest_obj > obj_dist) {
+            closest_obj = obj_dist;
             closest_id = predicted[j].id;
             KVP_DEBUG("dataAssociation", "closest " + observations[i].id );
          }
@@ -149,26 +150,28 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
       }
 
       KVP_DEBUG("updateWeights", "create near landmarks list within sensor range by map coordinate");
-      std::vector<LandmarkObs> nearLandmarks;
+      vector<LandmarkObs> predLandmarks;
       for(int j = 0 ; j < map_landmarks.landmark_list.size(); j++) {
-        Map::single_landmark_s landmark = map_landmarks.landmark_list[i];
-        double nearDist = dist(particles[i].x, particles[i].y, landmark.x_f, landmark.y_f);
-        if( nearDist <= sensor_range) {
-           nearLandmarks.push_back(LandmarkObs {landmark.id_i, landmark.x_f, landmark.x_f});
+        Map::single_landmark_s landmark = map_landmarks.landmark_list[j];
+        if((fabs(particles[i].x - landmark.x_f) <= sensor_range) && (fabs(particles[i].y - landmark.y_f) <= sensor_range)) {
+           predLandmarks.push_back(LandmarkObs {landmark.id_i, landmark.x_f, landmark.x_f});
         }
       }
 
       KVP_DEBUG("updateWeights", "identify landmark id");
-      dataAssociation(nearLandmarks, mapCoordObj, sensor_range);
+      dataAssociation(predLandmarks, mapCoordObj, sensor_range);
 
       KVP_DEBUG("updateWeights", "Calculate the weight of each particle using Multivariate Gaussian distribution");
+      particles[i].weight = 1.0;
+      double normalizer = (1.0/(2.0 * M_PI * std_landmark[0] * std_landmark[1]));
+
       for(int j = 0; j < mapCoordObj.size() ; j++) {
-         for(int k = 0; k < nearLandmarks.size() ; k++) {
-            if(mapCoordObj[j].id == nearLandmarks[k].id) {
-               double xt = pow((mapCoordObj[j].x - nearLandmarks[k].x),2) / (2 * pow(std_landmark[0],2));
-               double yt = pow((mapCoordObj[j].y - nearLandmarks[k].y),2) / (2 * pow(std_landmark[1],2));
-               double w = exp(-1 * (xt + yt))/(2*M_PI*std_landmark[0]*std_landmark[1]);
-               particles[i].weight *= w;
+
+         for(int k = 0; k < predLandmarks.size() ; k++) {
+            if(mapCoordObj[j].id == predLandmarks[k].id) {
+               double xt = pow((mapCoordObj[j].x-predLandmarks[k].x),2) / (2.0 * pow(std_landmark[0],2));
+               double yt = pow((mapCoordObj[j].y-predLandmarks[k].y),2) / (2.0 * pow(std_landmark[1],2));
+               particles[i].weight *= (exp(-1.0 * (xt + yt)) * normalizer);
             }
          }
       }
@@ -204,7 +207,6 @@ void ParticleFilter::resample() {
       while( sumW > weights[index] ) {
          sumW -= weights[index];
          index = (index + 1) % num_particles;
-         KVP_DEBUG("resample", to_string(index) );
       }
       resampleP.push_back(particles[index]);
    }
