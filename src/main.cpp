@@ -4,7 +4,7 @@
 #include <math.h>
 #include "particle_filter.h"
 
-#define DEBUG 1
+//#define DEBUG 1 
 
 #ifdef DEBUG
 #define MAIN_DEBUG(log) std::cout << "Main : " << log << "\n";
