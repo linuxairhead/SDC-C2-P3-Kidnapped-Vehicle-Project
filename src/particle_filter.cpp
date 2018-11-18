@@ -135,53 +135,69 @@ void ParticleFilter::updateWeights(double sensor_range, double std_landmark[],
    //   and the following is a good resource for the actual equation to implement (look at equation 
    //   3.33
    //   http://planning.cs.uiuc.edu/node99.html
-   double weight_normalizer = 0.0;
 
-   for(int i = 0; i < num_particles; i++) {
+  /*This variable is used for normalizing weights of all particles and bring them in the range
+    of [0, 1]*/
+  double weight_normalizer = 0.0;
 
-      KVP_DEBUG("updateWeights", "transform from vehicle coordinate to map coordinate");
-      std::vector<LandmarkObs> mapCoordObj;
-      for(int j = 0; j < observations.size(); j++) {
-         LandmarkObs obj;
-         obj.x = particles[i].x + observations[j].x*cos(particles[i].theta) - observations[j].y*sin(particles[i].theta);
-         obj.y = particles[i].y + observations[j].x*sin(particles[i].theta) + observations[j].y*cos(particles[i].theta);
-         obj.id = j;
-         mapCoordObj.push_back(obj);
+  for (int i = 0; i < num_particles; i++) {
+    double particle_x = particles[i].x;
+    double particle_y = particles[i].y;
+    double particle_theta = particles[i].theta;
+
+    KVP_DEBUG("updateWeights", "step1 transform from vehicle coordinate to map coordinate");
+    vector<LandmarkObs> mapCoordinate;
+    //Transform observations from vehicle's co-ordinates to map co-ordinates.
+    for (int j = 0; j < observations.size(); j++) {
+      LandmarkObs obj;
+      obj.id = j;
+      obj.x = particle_x + (cos(particle_theta) * observations[j].x) - (sin(particle_theta) * observations[j].y);
+      obj.y = particle_y + (sin(particle_theta) * observations[j].x) + (cos(particle_theta) * observations[j].y);
+      mapCoordinate.push_back(obj);
+    }
+
+    /*Step 2: Filter map landmarks to keep only those which are in the sensor_range of current
+    particle. Push them to predictions vector.*/
+    KVP_DEBUG("updateWeights", "create near landmarks list within sensor range by map coordinate");
+    vector<LandmarkObs> predLandmarks;
+    for (int j = 0; j < map_landmarks.landmark_list.size(); j++) {
+      Map::single_landmark_s landmark = map_landmarks.landmark_list[j];
+      if ((fabs((particle_x - landmark.x_f)) <= sensor_range) && (fabs((particle_y - landmark.y_f)) <= sensor_range)) {
+        predLandmarks.push_back(LandmarkObs {landmark.id_i, landmark.x_f, landmark.y_f});
       }
+    }
 
-      KVP_DEBUG("updateWeights", "create near landmarks list within sensor range by map coordinate");
-      vector<LandmarkObs> predLandmarks;
-      for(int j = 0 ; j < map_landmarks.landmark_list.size(); j++) {
-        Map::single_landmark_s landmark = map_landmarks.landmark_list[j];
-        if((fabs(particles[i].x - landmark.x_f) <= sensor_range) && (fabs(particles[i].y - landmark.y_f) <= sensor_range)) {
-           predLandmarks.push_back(LandmarkObs {landmark.id_i, landmark.x_f, landmark.x_f});
+    /*Step 3: Associate observations to lpredicted andmarks using nearest neighbor algorithm.*/
+    KVP_DEBUG("updateWeights", "identify landmark id");
+    //Associate observations with predicted landmarks
+    dataAssociation(predLandmarks, mapCoordinate, sensor_range);
+
+    /*Step 4: Calculate the weight of each particle using Multivariate Gaussian distribution.*/
+    KVP_DEBUG("updateWeights", "Calculate the weight of each particle using Multivariate Gaussian distribution");
+    //Reset the weight of particle to 1.0
+    particles[i].weight = 1.0;
+    double normalizer = (1.0/(2.0 * M_PI * std_landmark[0] * std_landmark[1]));
+
+    /*Calculate the weight of particle based on the multivariate Gaussian probability function*/
+    for (int j = 0; j < mapCoordinate.size(); j++) {
+      for (int k = 0; k < predLandmarks.size(); k++) {
+        if (mapCoordinate[j].id == predLandmarks[k].id) {
+          double xt = pow((mapCoordinate[j].x-predLandmarks[k].x),2) / (2.0 * pow(std_landmark[0],2));
+          double yt = pow((mapCoordinate[j].y-predLandmarks[k].y),2) / (2.0 * pow(std_landmark[1],2));
+
+          particles[i].weight *= normalizer * exp(-1.0 * (xt + yt));
         }
       }
+    }
+    weight_normalizer += particles[i].weight;
+  }
 
-      KVP_DEBUG("updateWeights", "identify landmark id");
-      dataAssociation(predLandmarks, mapCoordObj, sensor_range);
-
-      KVP_DEBUG("updateWeights", "Calculate the weight of each particle using Multivariate Gaussian distribution");
-      particles[i].weight = 1.0;
-      double normalizer = (1.0/(2.0 * M_PI * std_landmark[0] * std_landmark[1]));
-
-      for(int j = 0; j < mapCoordObj.size() ; j++) {
-
-         for(int k = 0; k < predLandmarks.size() ; k++) {
-            if(mapCoordObj[j].id == predLandmarks[k].id) {
-               double xt = pow((mapCoordObj[j].x-predLandmarks[k].x),2) / (2.0 * pow(std_landmark[0],2));
-               double yt = pow((mapCoordObj[j].y-predLandmarks[k].y),2) / (2.0 * pow(std_landmark[1],2));
-               particles[i].weight *= (exp(-1.0 * (xt + yt)) * normalizer);
-            }
-         }
-      }
-      weight_normalizer += particles[i].weight;
-   }
-   KVP_DEBUG("updateWeights", "Normalize the weights of all particles since resampling using probabilistic approach");
-   for(int i = 0; i < particles.size(); i++ ) {
-      particles[i].weight /= weight_normalizer;
-      weights[i] = particles[i].weight;
-   }
+  /*Step 5: Normalize the weights of all particles since resmapling using probabilistic approach.*/
+  KVP_DEBUG("updateWeights", "Normalize the weights of all particles since resampling using probabilistic approach");
+  for (int i = 0; i < particles.size(); i++) {
+    particles[i].weight /= weight_normalizer;
+    weights[i] = particles[i].weight;
+  }
 }
 
 void ParticleFilter::resample() {
